@@ -10,7 +10,7 @@ from babel.numbers import format_decimal as _format_decimal
 from babel.numbers import format_percent as _format_percent
 from bidi.algorithm import get_display
 from fpdf import FPDF
-from fpdf.enums import Align, TableBordersLayout, XPos, YPos
+from fpdf.enums import Align, TableBordersLayout, TextEmphasis, XPos, YPos
 from fpdf.fonts import FontFace
 from pydantic import BaseModel
 
@@ -73,6 +73,7 @@ class Invoice(BaseModel):
     customer_name: str
     customer_address: Address
     customer_additional_info: str | None = None
+    customer_locale: str | None = None
     subtotal_amount: int
     applied_balance_amount: int | None = None
     discount_amount: int
@@ -220,6 +221,7 @@ class Invoice(BaseModel):
             customer_name=order.billing_name,
             customer_additional_info=order.tax_id[0] if order.tax_id else None,
             customer_address=order.billing_address,
+            customer_locale=order.customer.locale,
             subtotal_amount=order.subtotal_amount,
             applied_balance_amount=order.applied_balance_amount,
             discount_amount=order.discount_amount,
@@ -245,49 +247,68 @@ class InvoiceGenerator(FPDF):
     logo: ClassVar[Path] = Path(__file__).parent / "invoice-logo.svg"
     """Path to the logo image for the invoice."""
 
-    regular_font_file = Path(__file__).parent / "fonts/Inter-Regular.ttf"
-    """Path to the regular font file."""
-
-    bold_font_file = Path(__file__).parent / "fonts/Inter-Bold.ttf"
-    """Path to the bold font file."""
-
     font_name: ClassVar[str] = "inter"
-    """Font family name."""
-
-    hebrew_regular_font_file = (
-        Path(__file__).parent / "fonts/NotoSansHebrew-Regular.ttf"
-    )
-    """Path to the Hebrew regular fallback font file."""
-
-    hebrew_bold_font_file = Path(__file__).parent / "fonts/NotoSansHebrew-Bold.ttf"
-    """Path to the Hebrew bold fallback font file."""
+    """Default font family name."""
 
     hebrew_font_name: ClassVar[str] = "notosanshebrew"
     """Font family name for Hebrew fallback glyphs."""
 
-    arabic_regular_font_file = (
-        Path(__file__).parent / "fonts/NotoSansArabic-Regular.ttf"
-    )
-    """Path to the Arabic regular fallback font file."""
-
-    arabic_bold_font_file = Path(__file__).parent / "fonts/NotoSansArabic-Bold.ttf"
-    """Path to the Arabic bold fallback font file."""
-
     arabic_font_name: ClassVar[str] = "notosansarabic"
     """Font family name for Arabic fallback glyphs."""
 
-    cjk_regular_font_files: ClassVar[tuple[Path, ...]] = (
-        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
-    )
-    """Candidate paths to the CJK regular fallback font file."""
+    cjk_font_name_prefix: ClassVar[str] = "notosans"
+    """Prefix used to derive the fpdf font family name for each CJK script."""
 
-    cjk_bold_font_files: ClassVar[tuple[Path, ...]] = (
-        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
-    )
-    """Candidate paths to the CJK bold fallback font file."""
+    cjk_scripts: ClassVar[tuple[str, ...]] = ("tc", "sc", "jp", "kr")
+    """CJK script families we ship per-script TTFs for."""
 
-    cjk_font_name: ClassVar[str] = "notosanscjk"
-    """Font family name for CJK fallback glyphs."""
+    font_files: ClassVar[dict[str, tuple[Path, Path]]] = {
+        font_name: (
+            Path(__file__).parent / "fonts/Inter-Regular.ttf",
+            Path(__file__).parent / "fonts/Inter-Bold.ttf",
+        ),
+        hebrew_font_name: (
+            Path(__file__).parent / "fonts/NotoSansHebrew-Regular.ttf",
+            Path(__file__).parent / "fonts/NotoSansHebrew-Bold.ttf",
+        ),
+        arabic_font_name: (
+            Path(__file__).parent / "fonts/NotoSansArabic-Regular.ttf",
+            Path(__file__).parent / "fonts/NotoSansArabic-Bold.ttf",
+        ),
+        # Per-script TTFs, not the unified TTC: PDF.js can't decode the CFF subsets fpdf2 emits.
+        f"{cjk_font_name_prefix}tc": (
+            Path(__file__).parent / "fonts/NotoSansTC-Regular.ttf",
+            Path(__file__).parent / "fonts/NotoSansTC-Bold.ttf",
+        ),
+        f"{cjk_font_name_prefix}sc": (
+            Path(__file__).parent / "fonts/NotoSansSC-Regular.ttf",
+            Path(__file__).parent / "fonts/NotoSansSC-Bold.ttf",
+        ),
+        f"{cjk_font_name_prefix}jp": (
+            Path(__file__).parent / "fonts/NotoSansJP-Regular.ttf",
+            Path(__file__).parent / "fonts/NotoSansJP-Bold.ttf",
+        ),
+        f"{cjk_font_name_prefix}kr": (
+            Path(__file__).parent / "fonts/NotoSansKR-Regular.ttf",
+            Path(__file__).parent / "fonts/NotoSansKR-Bold.ttf",
+        ),
+    }
+    """Font files (regular, bold) keyed by fpdf family name."""
+
+    cjk_script_country_map: ClassVar[dict[str, str]] = {
+        "JP": "jp",
+        "KR": "kr",
+        "CN": "sc",
+        "SG": "sc",
+        "MY": "sc",
+        "TW": "tc",
+        "MO": "tc",
+        "HK": "tc",
+    }
+    """Map ISO 3166-1 alpha-2 country to the preferred CJK script family."""
+
+    cjk_default_script: ClassVar[str] = "sc"
+    """Default CJK script family when the customer's country is not mapped."""
 
     base_font_size: ClassVar[int] = 10
     """Base font size in points."""
@@ -314,15 +335,39 @@ class InvoiceGenerator(FPDF):
     """Height of each row in the totals table in points."""
 
     @classmethod
-    def resolve_font_file(cls, candidates: tuple[Path, ...]) -> Path | None:
-        for candidate in candidates:
-            if candidate.exists():
-                return candidate
-        return None
+    def cjk_font_name_for_script(cls, script: str) -> str:
+        return f"{cls.cjk_font_name_prefix}{script}"
 
     @classmethod
     def has_cjk_fallback_fonts(cls) -> bool:
-        return cls.resolve_font_file(cls.cjk_regular_font_files) is not None
+        return all(
+            p.exists()
+            for s in cls.cjk_scripts
+            for p in cls.font_files[cls.cjk_font_name_for_script(s)]
+        )
+
+    @classmethod
+    def resolve_cjk_script(cls, country: str | None) -> str:
+        if country is None:
+            return cls.cjk_default_script
+        return cls.cjk_script_country_map.get(country, cls.cjk_default_script)
+
+    @classmethod
+    def cjk_script_from_locale(cls, locale: str | None) -> str | None:
+        if not locale:
+            return None
+        parts = locale.replace("_", "-").lower().split("-")
+        language = parts[0]
+        if language == "ja":
+            return "jp"
+        if language == "ko":
+            return "kr"
+        if language == "zh":
+            for tag in parts[1:]:
+                if tag in {"hant", "tw", "hk", "mo"}:
+                    return "tc"
+            return "sc"
+        return None
 
     def __init__(
         self,
@@ -332,24 +377,39 @@ class InvoiceGenerator(FPDF):
     ) -> None:
         super().__init__()
 
-        self.add_font(self.font_name, fname=self.regular_font_file)
-        self.add_font(self.font_name, fname=self.bold_font_file, style="B")
-        self.add_font(self.hebrew_font_name, fname=self.hebrew_regular_font_file)
-        self.add_font(
-            self.hebrew_font_name, fname=self.hebrew_bold_font_file, style="B"
-        )
-        self.add_font(self.arabic_font_name, fname=self.arabic_regular_font_file)
-        self.add_font(
-            self.arabic_font_name, fname=self.arabic_bold_font_file, style="B"
-        )
-        fallback_fonts = [self.hebrew_font_name, self.arabic_font_name]
-        cjk_regular_font_file = self.resolve_font_file(self.cjk_regular_font_files)
-        if cjk_regular_font_file is not None:
-            self.add_font(self.cjk_font_name, fname=cjk_regular_font_file)
-            cjk_bold_font_file = self.resolve_font_file(self.cjk_bold_font_files)
-            if cjk_bold_font_file is not None:
-                self.add_font(self.cjk_font_name, fname=cjk_bold_font_file, style="B")
-            fallback_fonts.append(self.cjk_font_name)
+        # To use a font we first add the font to fpdf, and then we set the
+        # fallback order. Here we load all of the fonts. CJK fonts are
+        # downloaded in the Dockerfile build stage and may be absent in
+        # dev/CI, so skip any family whose files aren't present.
+        self.loaded_font_families: set[str] = set()
+        for family, (regular, bold) in self.font_files.items():
+            if not (regular.exists() and bold.exists()):
+                continue
+            self.add_font(family, fname=regular)
+            self.add_font(family, fname=bold, style="B")
+            self.loaded_font_families.add(family)
+
+        # Fallback order: Hebrew, Arabic, then CJK with the customer's script
+        # first so shared Han chars get the right regional glyph form.
+        # customer locale/country first, and then all other scripts.
+        customer_script = self.cjk_script_from_locale(
+            data.customer_locale
+        ) or self.resolve_cjk_script(data.customer_address.country)
+
+        fallback_fonts = [
+            family
+            for family in [
+                self.hebrew_font_name,
+                self.arabic_font_name,
+                self.cjk_font_name_for_script(customer_script),
+                *(
+                    self.cjk_font_name_for_script(s)
+                    for s in self.cjk_scripts
+                    if s != customer_script
+                ),
+            ]
+            if family in self.loaded_font_families
+        ]
         self.set_fallback_fonts(fallback_fonts, exact_match=False)
         self.set_font(self.font_name, size=self.base_font_size)
 
@@ -357,6 +417,26 @@ class InvoiceGenerator(FPDF):
         self.data = data
         self.heading_title = heading_title
         self.add_sandbox_warning = add_sandbox_warning
+
+    def set_font(
+        self,
+        family: str | None = None,
+        style: str | TextEmphasis = "",
+        size: float = 0,
+    ) -> None:
+        # fpdf2's set_font short-circuits when family/style/size match the
+        # currently tracked values. But `current_font` can drift to a
+        # fallback font during fragment rendering (fpdf.py sets
+        # `current_font = frag.font` per fragment), so the next set_font call
+        # for the same family is a no-op and `current_font` stays stale —
+        # causing subsequent ASCII cells to render with the CJK font's
+        # cmap. Re-resolve `current_font` from the canonical font_family +
+        # font_style after delegating, so it always matches the logical
+        # font selection.
+        super().set_font(family, style, size)
+        fontkey = self.font_family + self.font_style
+        if fontkey in self.fonts:
+            self.current_font = self.fonts[fontkey]
 
     def _shape_text(self, text: str) -> str:
         lines = text.split("\n")
