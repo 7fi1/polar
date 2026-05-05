@@ -183,11 +183,9 @@ const MaintainerNewPaidSubscription = ({
             {payload.tier_price_amount !== null && (
               <>
                 (
-                {formatCurrency('compact')(
-                  payload.tier_price_amount,
-                  payload.currency || 'usd',
-                )}
-                /{payload.tier_price_recurring_interval})
+                {payload.formatted_price_with_interval ??
+                  `${formatCurrency('compact')(payload.tier_price_amount, payload.currency || 'usd')}/${payload.tier_price_recurring_interval}`}
+                )
               </>
             )}
           </>
