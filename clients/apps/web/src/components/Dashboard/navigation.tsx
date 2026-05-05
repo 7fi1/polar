@@ -318,12 +318,13 @@ const organizationRoutesList = (org?: schemas['Organization']): Route[] => [
     if: true,
     subs: [
       {
-        title: 'General',
+        title: 'Preferences',
         link: `/dashboard/${org?.slug}/settings`,
       },
       {
         title: 'Billing',
         link: `/dashboard/${org?.slug}/settings/billing`,
+        if: org?.feature_settings?.billing_enabled ?? false,
       },
       {
         title: 'Members',

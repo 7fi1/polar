@@ -23,7 +23,7 @@ type TextTag =
   | 'h5'
   | 'h6'
 
-const HEADING_BASE = 'font-display tracking-tight text-black dark:text-white'
+const HEADING_BASE = 'font-display text-black dark:text-white'
 
 const textVariants = cva('', {
   variants: {
@@ -41,17 +41,17 @@ const textVariants = cva('', {
       /** Inline code and technical values — monospace, 12 px. */
       mono: 'font-mono text-xs text-gray-900 dark:text-white',
       /** Page-level headline — h1 sizing. */
-      'heading-xl': `${HEADING_BASE} text-5xl md:text-7xl font-light leading-tighter!`,
+      'heading-xl': `${HEADING_BASE} text-5xl md:text-7xl`,
       /** Section headline — h2 sizing. */
-      'heading-l': `${HEADING_BASE} text-4xl md:text-5xl leading-tight!`,
+      'heading-l': `${HEADING_BASE} text-4xl md:text-5xl`,
       /** Section headline — h3 sizing. */
-      'heading-m': `${HEADING_BASE} text-3xl md:text-5xl leading-tight!`,
+      'heading-m': `${HEADING_BASE} text-3xl md:text-5xl`,
       /** Subsection headline — h4 sizing. */
-      'heading-s': `${HEADING_BASE} text-2xl md:text-3xl leading-tight!`,
+      'heading-s': `${HEADING_BASE} text-2xl md:text-3xl`,
       /** Card/list headline — h5 sizing. */
-      'heading-xs': `${HEADING_BASE} text-xl md:text-2xl leading-tight!`,
+      'heading-xs': `${HEADING_BASE} text-xl md:text-2xl`,
       /** Smallest headline — h6 sizing. */
-      'heading-xxs': `${HEADING_BASE} text-lg md:text-xl leading-tight!`,
+      'heading-xxs': `${HEADING_BASE} text-lg md:text-xl`,
     },
     color: {
       /** Inherits color from variant (default behavior). */

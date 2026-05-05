@@ -37,7 +37,7 @@ export const colors = stylex.defineVars({
     [DARK]: 'hsl(233, 4%, 6.5%)',
   },
   'background-card': {
-    default: '#ffffff',
+    default: 'oklch(96.7% 0.003 264.54)',
     [DARK]: 'hsl(233, 4%, 9.5%)',
   },
   'background-warning': {
