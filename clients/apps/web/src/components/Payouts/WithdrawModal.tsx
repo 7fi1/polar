@@ -1,17 +1,21 @@
 import { extractApiErrorMessage } from '@/utils/api/errors'
 import { api } from '@/utils/client'
+import { usePayouts } from '@/hooks/queries/payouts'
 import ArrowOutwardOutlined from '@mui/icons-material/ArrowOutwardOutlined'
 import { isValidationError, schemas } from '@polar-sh/client'
 import { formatCurrency } from '@polar-sh/currency'
 import Button from '@polar-sh/ui/components/atoms/Button'
+import FormattedDateTime from '@polar-sh/ui/components/atoms/FormattedDateTime'
 import Link from 'next/link'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal } from '../Modal'
 import { DetailRow } from '../Shared/DetailRow'
 import { toast } from '../Toast/use-toast'
+import SpinnerNoMargin from '../Shared/Spinner'
 
 interface WithdrawModalProps {
   organization: schemas['Organization']
+  account: schemas['Account']
   isShown: boolean
   hide: () => void
   onSuccess?: (payoutId: string) => void
@@ -19,6 +23,7 @@ interface WithdrawModalProps {
 
 const WithdrawModal: React.FC<WithdrawModalProps> = ({
   organization,
+  account,
   isShown,
   hide,
   onSuccess,
@@ -32,8 +37,28 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
     [organization.capabilities.payouts],
   )
 
+  const { data: latestPayouts, isPending } = usePayouts(account.id, {
+    limit: 1,
+    sorting: ['-created_at'],
+  })
+
+  const nextPayoutAt = useMemo(() => {
+    const latest = latestPayouts?.items?.[0]
+    if (!latest) {
+      return null
+    }
+    return new Date(
+      new Date(latest.created_at).getTime() + account.payout_interval * 1000,
+    )
+  }, [latestPayouts, account.payout_interval])
+
+  const isPayoutIntervalLimited = useMemo(
+    () => nextPayoutAt !== null && nextPayoutAt > new Date(),
+    [nextPayoutAt],
+  )
+
   const getPayoutEstimate = useCallback(async () => {
-    if (!canWithdraw) {
+    if (!canWithdraw || isPayoutIntervalLimited) {
       return
     }
 
@@ -55,7 +80,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
     if (data) {
       setPayoutEstimate(data)
     }
-  }, [organization, canWithdraw])
+  }, [organization, canWithdraw, isPayoutIntervalLimited])
 
   /* eslint-disable react-hooks/set-state-in-effect -- fetches payout estimate when modal opens */
   useEffect(() => {
@@ -89,6 +114,22 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
     onSuccess?.(data.id)
   }, [organization, onSuccess])
 
+  if (isPending) {
+    return (
+      <Modal
+        title="Withdraw Balance"
+        className="min-w-100"
+        isShown={isShown}
+        hide={hide}
+        modalContent={
+          <div className="flex flex-col items-center justify-between overflow-auto p-6">
+            <SpinnerNoMargin />
+          </div>
+        }
+      />
+    )
+  }
+
   return (
     <Modal
       title="Withdraw Balance"
@@ -96,7 +137,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
       isShown={isShown}
       hide={hide}
       modalContent={
-        <div className="overflow-scroll p-6">
+        <div className="overflow-auto p-6">
           {!canWithdraw && (
             <div className="flex flex-col gap-6">
               <p>
@@ -119,6 +160,21 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
                   </Button>
                 </Link>
               </p>
+            </div>
+          )}
+
+          {canWithdraw && isPayoutIntervalLimited && nextPayoutAt && (
+            <div className="flex flex-col gap-6">
+              <p>
+                You&apos;ve recently requested a payout. The next one can be
+                requested at{' '}
+                <FormattedDateTime datetime={nextPayoutAt} resolution="time" />.
+              </p>
+              <div className="flex flex-row gap-x-4">
+                <Button variant="default" onClick={hide}>
+                  Close
+                </Button>
+              </div>
             </div>
           )}
 

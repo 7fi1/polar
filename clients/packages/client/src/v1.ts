@@ -5507,6 +5507,11 @@ export interface components {
       currency: string
       /** Credit Balance */
       credit_balance: number
+      /**
+       * Payout Interval
+       * @description Minimum delay, in seconds, between two payout requests.
+       */
+      payout_interval: number
     }
     /** AccountCredit */
     AccountCredit: {

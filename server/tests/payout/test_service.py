@@ -23,6 +23,7 @@ from polar.payout.service import (
     InvoiceAlreadyExists,
     MissingInvoiceBillingDetails,
     OrganizationUnderReview,
+    PayoutIntervalLimitReached,
     PayoutNotCancelable,
     PayoutNotSucceeded,
 )
@@ -251,6 +252,57 @@ class TestCreate:
 
         payout_transaction_service_mock.create.assert_called_once()
 
+    async def test_recent_payout_within_24h(
+        self,
+        save_fixture: SaveFixture,
+        session: AsyncSession,
+        locker: Locker,
+        organization: Organization,
+        user: User,
+        account: Account,
+    ) -> None:
+        payout_account = await create_payout_account(save_fixture, organization, user)
+
+        await create_payout(
+            save_fixture,
+            account=account,
+            payout_account=payout_account,
+            created_at=utc_now() - datetime.timedelta(hours=1),
+        )
+
+        with pytest.raises(PayoutIntervalLimitReached):
+            await payout_service.create(session, locker, organization)
+
+    async def test_previous_payout_older_than_24h(
+        self,
+        save_fixture: SaveFixture,
+        session: AsyncSession,
+        locker: Locker,
+        organization: Organization,
+        user: User,
+        account: Account,
+        payout_transaction_service_mock: MagicMock,
+    ) -> None:
+        payout_account = await create_payout_account(save_fixture, organization, user)
+
+        await create_payout(
+            save_fixture,
+            account=account,
+            payout_account=payout_account,
+            created_at=utc_now() - datetime.timedelta(hours=25),
+        )
+
+        payment_transaction_1 = await create_payment_transaction(save_fixture)
+        await create_balance_transaction(
+            save_fixture, account=account, payment_transaction=payment_transaction_1
+        )
+
+        payout_transaction_service_mock.create.return_value = Transaction()
+
+        payout = await payout_service.create(session, locker, organization)
+
+        assert payout.account == account
+
     async def test_valid_conflicting_invoice_numbers(
         self,
         save_fixture: SaveFixture,
@@ -269,6 +321,7 @@ class TestCreate:
             payout_account=payout_account,
             # Set an invoice number that would conflict with the next one
             invoice_number=f"{settings.PAYOUT_INVOICES_PREFIX}0002",
+            created_at=utc_now() - datetime.timedelta(hours=25),
         )
 
         payment_transaction_1 = await create_payment_transaction(save_fixture)

@@ -21,13 +21,14 @@ from polar.kit.currency import format_currency
 from polar.kit.db.postgres import AsyncSessionMaker
 from polar.kit.pagination import PaginationParams
 from polar.kit.sorting import Sorting
+from polar.kit.utils import utc_now
 from polar.locker import Locker
 from polar.logging import Logger
 from polar.models import Account, Organization, Payout, PayoutAttempt
 from polar.models.payout import PayoutStatus
 from polar.models.payout_attempt import PayoutAttemptStatus
 from polar.organization.repository import OrganizationRepository
-from polar.postgres import AsyncSession
+from polar.postgres import AsyncReadSession, AsyncSession
 from polar.transaction.repository import (
     PayoutReversalTransactionRepository,
     PayoutTransactionRepository,
@@ -127,6 +128,15 @@ class PendingPayoutCreation(PayoutError):
         self.account = account
         message = f"A payout is already being created for the account {account.id}."
         super().__init__(message, 409)
+
+
+class PayoutIntervalLimitReached(PayoutError):
+    def __init__(self, account: Account, interval: datetime.timedelta) -> None:
+        self.account = account
+        self.interval = interval
+        hours = max(1, int(interval.total_seconds() // 3600))
+        message = f"You can only request a payout once per {hours} hours."
+        super().__init__(message, 400)
 
 
 class PayoutAttemptDoesNotExist(PayoutError):
@@ -288,6 +298,24 @@ class PayoutService:
             net_amount=balance_amount - sum(fee for _, fee in payout_fees),
         )
 
+    async def get_next_payout_at(
+        self,
+        session: AsyncReadSession,
+        account: Account,
+    ) -> datetime.datetime | None:
+        """Earliest time a new payout can be requested for ``account``.
+
+        Returns ``None`` when a payout can be requested immediately.
+        """
+        repository = PayoutRepository.from_session(session)
+        latest_payout = await repository.get_latest_by_account(account.id)
+        if latest_payout is None:
+            return None
+        next_at = latest_payout.created_at + account.payout_interval
+        if next_at <= utc_now():
+            return None
+        return next_at
+
     async def create(
         self, session: AsyncSession, locker: Locker, organization: Organization
     ) -> Payout:
@@ -301,6 +329,10 @@ class PayoutService:
             raise PendingPayoutCreation(account)
 
         async with locker.lock(lock_name, timeout=60, blocking_timeout=1):
+            next_payout_at = await self.get_next_payout_at(session, account)
+            if next_payout_at is not None:
+                raise PayoutIntervalLimitReached(account, account.payout_interval)
+
             payout_account = organization.get_ready_payout_account()
 
             balance_amount = await transaction_service.get_transactions_sum(
