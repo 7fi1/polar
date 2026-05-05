@@ -1,4 +1,4 @@
-import { Preview } from '@react-email/components'
+import { Preview } from 'react-email'
 import Footer from '../components/Footer'
 import Intro from '../components/Intro'
 import WrapperPolar from '../components/WrapperPolar'
@@ -22,7 +22,8 @@ export function NotificationNewSubscription({
     <strong>{subscriber_name}</strong>
   )
 
-  const priceDisplay = formatted_price_with_interval ??
+  const priceDisplay =
+    formatted_price_with_interval ??
     (tier_price_amount
       ? `${formatted_price_amount}/${tier_price_recurring_interval}`
       : 'free')
