@@ -39,6 +39,7 @@ from polar.models import (
     UserOrganization,
 )
 from polar.models.organization import (
+    FIRST_REVIEW_THRESHOLD_CENTS,
     STATUS_CAPABILITIES,
     CapabilityName,
     OrganizationCapabilities,
@@ -852,17 +853,19 @@ class OrganizationService:
         session: AsyncSession,
         organization: Organization,
         next_review_threshold: int | None = None,
-        *,
-        reason: str | None = None,
     ) -> Organization:
-        reactivation_notes = {
-            OrganizationStatus.DENIED: "Organization reactivated from denied.",
-            OrganizationStatus.BLOCKED: "Organization unblocked.",
-        }
-        if organization.status in reactivation_notes and not reason:
+        """Confirm a REVIEW or SNOOZED organization and transition it to ACTIVE.
+
+        For DENIED/BLOCKED reactivation, use `backoffice_approve`. For
+        post-appeal-approval transitions, use `approve_appeal`.
+        """
+        if organization.status not in (
+            OrganizationStatus.REVIEW,
+            OrganizationStatus.SNOOZED,
+        ):
             raise OrganizationError(
-                "A reason is required when reactivating a "
-                f"{organization.status.get_display_name()} organization.",
+                "confirm_organization_reviewed requires REVIEW or SNOOZED "
+                f"status, got {organization.status.get_display_name()}.",
                 400,
             )
 
@@ -871,44 +874,8 @@ class OrganizationService:
                 organization.next_review_threshold * 2, _MIN_REVIEW_THRESHOLD
             )
 
-        previous_status = organization.status
-        reactivation_note = reactivation_notes.get(previous_status)
-
-        # Mark the appeal approved before the gate check so a later
-        # webhook-driven maybe_activate sees an approved review.
-        review_repository = OrganizationReviewRepository.from_session(session)
-        review = await review_repository.get_by_organization(organization.id)
-        if (
-            review
-            and review.appeal_submitted_at
-            and review.appeal_decision != OrganizationReview.AppealDecision.APPROVED
-        ):
-            review.appeal_decision = OrganizationReview.AppealDecision.APPROVED
-            review.appeal_reviewed_at = datetime.now(UTC)
-            session.add(review)
-
-        # Reactivations require completed Stripe onboarding to go straight to
-        # ACTIVE; otherwise revert to CREATED and let the webhook-driven
-        # maybe_activate promote them once Stripe finishes.
-        target_status = OrganizationStatus.ACTIVE
-        if reactivation_note and not await self._is_activation_ready(
-            session, organization
-        ):
-            target_status = OrganizationStatus.CREATED
-
-        organization.set_status(target_status)
+        organization.set_status(OrganizationStatus.ACTIVE)
         organization.next_review_threshold = next_review_threshold
-
-        if reactivation_note:
-            suffix = (
-                " Status reverted to created — pending Stripe Identity and "
-                "Stripe Connect Express completion before activation."
-                if target_status == OrganizationStatus.CREATED
-                else ""
-            )
-            _append_internal_note(
-                organization, reactivation_note + suffix, reason=reason
-            )
 
         if organization.initially_reviewed_at is None:
             organization.initially_reviewed_at = datetime.now(UTC)
@@ -922,7 +889,7 @@ class OrganizationService:
     ) -> bool:
         """Whether onboarding gates (details, payout account, KYC) are met.
 
-        Mirrors the non-review gates checked by :meth:`maybe_activate` so the
+        Mirrors the non-review gates checked by `maybe_activate` so the
         backoffice approval path can decide whether a reactivation should go
         straight to ACTIVE or revert to CREATED to finish onboarding.
         """
@@ -952,28 +919,25 @@ class OrganizationService:
     async def maybe_activate(
         self, session: AsyncSession, organization: Organization
     ) -> bool:
-        """Transition → ACTIVE only when every onboarding gate passes.
+        """Transition CREATED → ACTIVE when every onboarding gate passes.
 
         Gates:
-          1. Status can currently transition to ACTIVE (not already ACTIVE,
-             not OFFBOARDING).
-          2. Details submitted (details + details_submitted_at).
-          3. Review is approved: verdict PASS, or verdict FAIL with an
+          1. Status is CREATED.
+          2. Review is approved: verdict PASS, or verdict FAIL with an
              APPROVED appeal.
-          4. Payout account is ready (see ``PayoutAccount.is_payout_ready``).
-          5. Payout account admin: identity verified.
+          3. Details submitted, payout account ready, admin identity
+             verified (see `_is_activation_ready`).
 
-        Idempotent — safe to call from multiple triggers (AI review, Stripe
-        account.updated, identity verification, appeal approval). Returns True
-        iff the org was transitioned.
+        Idempotent — safe to call from automated triggers (AI review, Stripe
+        ``account.updated``, identity verification). Returns True iff the org
+        was transitioned.
+
+        Re-activation from DENIED/BLOCKED is synchronous and explicit, via
+        `approve_appeal` (post-appeal-approval) or `backoffice_approve`
+        (admin override). Webhooks never transition out of DENIED — the org's
+        current status is the sole source of truth for what's authorized.
         """
-        if organization.status not in (
-            OrganizationStatus.CREATED,
-            OrganizationStatus.REVIEW,
-            OrganizationStatus.SNOOZED,
-            OrganizationStatus.DENIED,
-            OrganizationStatus.BLOCKED,
-        ):
+        if organization.status != OrganizationStatus.CREATED:
             return False
 
         review_repository = OrganizationReviewRepository.from_session(session)
@@ -982,52 +946,120 @@ class OrganizationService:
             return False
 
         if not await self._is_activation_ready(session, organization):
-            if organization.status in (
-                OrganizationStatus.DENIED,
-                OrganizationStatus.BLOCKED,
-            ):
-                organization.set_status(OrganizationStatus.CREATED)
-                _append_internal_note(
-                    organization,
-                    "Appeal approved — reverted to created pending Stripe "
-                    "Identity and Stripe Connect Express completion.",
-                    reason=review.appeal_reason or "Appeal approved",
-                )
-                session.add(organization)
-                log.info(
-                    "organization.maybe_activate.reverted_to_created",
-                    organization_id=str(organization.id),
-                    slug=organization.slug,
-                )
             return False
 
-        reason: str | None = None
-        if organization.status in (
-            OrganizationStatus.DENIED,
-            OrganizationStatus.BLOCKED,
-        ):
-            reason = review.appeal_reason or "Appeal approved"
-
-        # On first activation keep the small default threshold so the next
-        # review fires quickly once the merchant starts taking payments.
-        # Reactivations fall back to confirm_organization_reviewed's doubling
-        # logic.
-        next_review_threshold: int | None = None
+        organization.set_status(OrganizationStatus.ACTIVE)
         if organization.initially_reviewed_at is None:
-            next_review_threshold = organization.next_review_threshold
-
-        await self.confirm_organization_reviewed(
-            session,
-            organization,
-            next_review_threshold=next_review_threshold,
-            reason=reason,
-        )
+            # First activation: keep the small default threshold so the next
+            # review fires quickly once the merchant starts taking payments.
+            organization.initially_reviewed_at = datetime.now(UTC)
+        else:
+            organization.next_review_threshold = max(
+                organization.next_review_threshold * 2, _MIN_REVIEW_THRESHOLD
+            )
+        session.add(organization)
         log.info(
             "organization.maybe_activate.activated",
             organization_id=str(organization.id),
             slug=organization.slug,
         )
         return True
+
+    async def _reactivate_organization(
+        self,
+        session: AsyncSession,
+        organization: Organization,
+        *,
+        note: str,
+        reason: str | None,
+        next_review_threshold: int | None = None,
+    ) -> OrganizationStatus:
+        """Synchronously transition a DENIED/BLOCKED org to ACTIVE or CREATED.
+
+        Goes to ACTIVE if every onboarding gate passes; otherwise to CREATED so
+        the merchant can finish Stripe onboarding (a later `maybe_activate`
+        then promotes them to ACTIVE).
+        """
+        if next_review_threshold is None:
+            next_review_threshold = FIRST_REVIEW_THRESHOLD_CENTS
+
+        is_ready = await self._is_activation_ready(session, organization)
+        target_status = (
+            OrganizationStatus.ACTIVE if is_ready else OrganizationStatus.CREATED
+        )
+
+        full_note = note
+        if not is_ready:
+            full_note += (
+                " Status reverted to created — pending Stripe Identity and "
+                "Stripe Connect Express completion before activation."
+            )
+
+        organization.set_status(target_status)
+        organization.next_review_threshold = next_review_threshold
+        _append_internal_note(organization, full_note, reason=reason)
+
+        if organization.initially_reviewed_at is None:
+            organization.initially_reviewed_at = datetime.now(UTC)
+
+        session.add(organization)
+        return target_status
+
+    async def backoffice_approve(
+        self,
+        session: AsyncSession,
+        organization: Organization,
+        next_review_threshold: int | None = None,
+        *,
+        reason: str,
+    ) -> Organization:
+        """Backoffice override to re-activate a DENIED or BLOCKED organization.
+
+        Use for support-contact escalations where an admin overrides a denial
+        without going through the appeal flow (or after the AI auto-rejected
+        an appeal). Synchronously transitions to ACTIVE if onboarding is
+        complete, otherwise to CREATED.
+
+        If a review with a submitted appeal exists, the appeal is recorded as
+        APPROVED so the merchant's frontend reflects the approval.
+        """
+        notes = {
+            OrganizationStatus.DENIED: "Organization reactivated from denied.",
+            OrganizationStatus.BLOCKED: "Organization unblocked.",
+        }
+        if organization.status not in notes:
+            raise OrganizationError(
+                "backoffice_approve requires DENIED or BLOCKED status, got "
+                f"{organization.status.get_display_name()}.",
+                400,
+            )
+
+        review_repository = OrganizationReviewRepository.from_session(session)
+        review = await review_repository.get_by_organization(organization.id)
+        if (
+            review
+            and review.appeal_submitted_at
+            and review.appeal_decision != OrganizationReview.AppealDecision.APPROVED
+        ):
+            review.appeal_decision = OrganizationReview.AppealDecision.APPROVED
+            review.appeal_reviewed_at = datetime.now(UTC)
+            session.add(review)
+
+        target_status = await self._reactivate_organization(
+            session,
+            organization,
+            note=notes[organization.status],
+            reason=reason,
+            next_review_threshold=next_review_threshold,
+        )
+        log.info(
+            "organization.backoffice_approve.activated"
+            if target_status == OrganizationStatus.ACTIVE
+            else "organization.backoffice_approve.reverted_to_created",
+            organization_id=str(organization.id),
+            slug=organization.slug,
+        )
+        return organization
 
     async def handle_ongoing_review_verdict(
         self,
@@ -1420,14 +1452,12 @@ class OrganizationService:
     async def approve_appeal(
         self, session: AsyncSession, organization: Organization
     ) -> OrganizationReview:
-        """Approve an organization's appeal.
+        """Approve an appeal and synchronously transition the organization.
 
-        Recording the approval flips the review's ``appeal_decision`` and then
-        delegates to :meth:`maybe_activate` — which runs the remaining gates
-        (payout account ready, admin identity verified) before transitioning
-        DENIED → ACTIVE. If a gate is still missing the org is moved to
-        CREATED so the merchant can finish Stripe onboarding; a later
-        webhook-triggered ``maybe_activate`` then promotes it to ACTIVE.
+        Sets ``review.appeal_decision = APPROVED`` and immediately moves the
+        org out of DENIED — to ACTIVE if every onboarding gate passes,
+        otherwise to CREATED so the merchant can finish Stripe onboarding. A
+        later `maybe_activate` then promotes a CREATED org to ACTIVE.
         """
 
         repository = OrganizationReviewRepository.from_session(session)
@@ -1446,7 +1476,20 @@ class OrganizationService:
         review.appeal_reviewed_at = datetime.now(UTC)
         session.add(review)
 
-        await self.maybe_activate(session, organization)
+        if organization.status == OrganizationStatus.DENIED:
+            target_status = await self._reactivate_organization(
+                session,
+                organization,
+                note="Appeal approved.",
+                reason=review.appeal_reason,
+            )
+            log.info(
+                "organization.approve_appeal.activated"
+                if target_status == OrganizationStatus.ACTIVE
+                else "organization.approve_appeal.reverted_to_created",
+                organization_id=str(organization.id),
+                slug=organization.slug,
+            )
 
         return review
 
