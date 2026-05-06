@@ -1,129 +1,103 @@
-As a Merchant of Record (MoR), we act as the reseller of digital goods and services. Therefore, we need to make sure that businesses using Polar complies with our [acceptable products & use](/merchant-of-record/acceptable-use) policies. Combined with continuously monitoring, reviewing and preventing fraud, unacceptable use, bad actors and high risk accounts.
+As a Merchant of Record (MoR), Polar resells your digital goods and services on your behalf. To do this responsibly, we verify that every business using Polar complies with our [Acceptable Use Policy](/merchant-of-record/acceptable-use), and we continuously monitor transactions to prevent fraud, abuse, and high-risk activity.
 
-Account reviews are typically completed within a week on average. However, sometimes it can take longer due to weekends, holidays etc. We process them as quickly as possible and resolve every single one.
+We process every review as quickly as we can and resolve every single one.
 
 ### First payout review
 
-You will need to go through our main review ahead of the initial payout. We’ll reach out over email for:
+<Tip>
+  **Build first, submit second.** It's tempting to get approved before doing the integration work, but a complete setup is what makes a review fast and clean. Configure your [products and benefits](/features/products), wire up your integration (checkout links, API keys, webhooks), and have a live website pointing to it. The more we can see end-to-end, the more confidently — and quickly — we can approve your account.
+</Tip>
 
-1. A quick survey about your business, products and intended use case with Polar.
-2. Identity verification (KYC) using Passport/ID Card/Driver License and a selfie. It’s secure, easy and quick to submit using Stripe Identity.
+Before your first payout, you'll go through our main account review. You can submit everything yourself from **Finance → Account** in your Polar dashboard, in three steps:
 
-We need to perform this review to ensure compliance with our [acceptable products & use](/merchant-of-record/acceptable-use) policy. Combined with meeting our own KYC/AML requirements as a billing platform.
+1. **Submit for approval.** Tell us about your business, your products, and how you intend to use Polar.
+2. **Identity verification (KYC).** Verify your identity with a passport, ID card, or driver's license along with a selfie — secure, easy, and quick through Stripe Identity.
+3. **Connect a payout account.** Set up a [payout account](/features/finance/accounts) via Stripe Connect Express so we can transfer your earnings to you.
 
-**Submit upfront (Soon)**
+Initial reviews can take **up to 14 days** to complete, depending on volume, weekends, and holidays. This review keeps us compliant with our [Acceptable Use Policy](/merchant-of-record/acceptable-use) and meets our own KYC/AML requirements as a billing platform.
 
-We’ll soon offer the ability to submit all of this information in advance to speed up the initial payout even further and without concern of any issues or delays.
+### Continuous reviews
 
-### Continuous reviews (Async)
+We continuously monitor all transactions across our platform to proactively prevent fraud, and we run asynchronous reviews of accounts at certain sales thresholds. Most of these reviews don't require any additional information from you.
 
-We continuously monitor all transactions across our platform to proactively prevent fraud. In addition to performing asynchronous reviews of accounts at certain sale thresholds. These reviews are often completed within a day or two and without any additional information required from you.
+While a review is in progress, [payouts](/features/finance/payouts) are temporarily paused — so you may notice that you can't withdraw your balance until the review is resolved. Your customers are unaffected: new purchases keep going through, and existing subscriptions renew as usual.
 
-You’ll get notified over email that a review is taking place. Payouts will be paused during this time, but it has no impact on your customers’ experience or ability to purchase, subscribe or checkout at any time.
+In a continuous review, we look at two things: that your use case is still within our [Acceptable Use Policy](/merchant-of-record/acceptable-use) and consistent with what was approved during your first review, and that your account is in good financial health — refunds, chargebacks, and risk scores across recent transactions.
 
-We look at:
-
-* Risk scores across historic transactions
-* Refunds & Chargebacks ratio
-* Appropriate next sales threshold for a review given the above
-
-**High chargeback ratios**
-
-Credit card networks, e.g Visa/Mastercard, consider 0.7% of sales in chargebacks excessive. Exceeding it can lead to monitoring programs with high costs, penalties and ultimately termination.
-
-We therefore reach out proactively to collaborate on maintaining a low chargeback ratio and reducing it ahead of getting close to these thresholds.
+<Note>
+  **Chargebacks and card networks.** Credit card networks (e.g. Visa, Mastercard) consider chargebacks above 0.7% of sales excessive. Exceeding that threshold can lead to monitoring programs with extra costs, penalties, and ultimately termination from the network. We might reach out proactively to collaborate on lowering your chargeback ratio before it approaches these thresholds.
+</Note>
 
 ## Operational Guidelines
 
-To maintain platform integrity and ensure smooth operations, we have established clear guidelines for merchants using Polar.
+### Customer Support
 
-#### Expected Responsiveness
+You're responsible for supporting your own customers. The volume of support requests we receive about your account, and how you handle them when we loop you in, both factor into our reviews.
 
-We expect merchants to maintain high standards of customer support and responsiveness to their customers:
+When we include you in a customer support thread, we expect a response within **48 hours**. If we don't hear back, we may refund the affected customers and issue a warning. Repeated unresponsiveness leads to offboarding.
 
-- **Support Ticket Management**: Maintain a low rate of support tickets from customers
-- **Merchant Communication**: When we include you in customer support communications, we require a response within 48 hours
-  - If no response is received within 48 hours, we may issue refunds to affected customers and a warning to merchants
-  - In case of repeated issues, we'll have to offboard unresponsive merchants
-- **Customer Service Quality**: We evaluate your customer service history and approach when determining appropriate actions
+### Test Transactions
 
-#### Test Transactions
+Don't run test purchases with real card details. Payment processors flag this as "card testing" and can block the card or your account, and it triggers our own account reviews.
 
-To maintain platform security and prevent abuse:
+Use our sandbox environment instead. If you need to verify something in production, set up a free product or a 100% discount code so no real money changes hands.
 
-- **Use Sandbox Environment or 100% Discounts**: All  testing must be conducted using our sandbox environment. Want to test in production? Use a Free Product or a 100% Discount code to avoid using real money.
-- **No Real Money Testing**: Test transactions using real card details are prohibited. It's against the terms of payment service providers, triggers our account reviews and can potentially lead to the card or account getting blocked since it can be flagged as "card testing".
+### Chargeback Management
 
-#### Chargeback Management
+We hold accounts to a **0.4% chargeback rate** — well below the 0.7% threshold the card networks themselves treat as excessive. Customers can file chargebacks up to 120 days after a transaction, so we monitor these continuously.
 
-We monitor chargeback rates closely to protect both merchants and customers:
+If your rate climbs toward our threshold, we'll reach out first to collaborate on bringing it down. If that doesn't work, we may take the following actions, in order of severity:
 
-- **Acceptable Threshold**: We maintain a chargeback rate threshold of 0.4% for merchants
-- **Timeframe**: Chargebacks can be filed up to 120 days from the original transaction date
-- **Consequences of High Chargeback Rates**:
+1. Refund individual transactions as needed.
+2. Pause payouts pending review, until the 120-day chargeback window for those transactions has closed.
+3. Pause future payments.
+4. Block the account and refund customers.
 
-  We work proactively to maintain a low chargeback rate throughout the platform and strive to collaborate with merchants at risk of exceeding our thresholds to reverse the trend. However, we reserve the right to (in order of severity):
-  - Refund transactions as needed
-  - Pause payouts pending review – up until the timeframe for chargebacks have been surpassed
-  - Pause future payments
-  - Block accounts and refund customers
+We don't take any of these actions lightly and always try to resolve issues with you first.
 
-  We don't take this responsibility or actions lightly, and always strive to mitigate and avoid them, but have to take appropriate and proactive actions in case of issues.
+<Note>
+  We integrate with credit card networks to receive early chargeback signals before they're officially filed. Below a certain transaction value, we automatically refund and cancel any related subscription to reduce chargebacks proactively.
+</Note>
 
-  <Note>
-    We also have integrations with credit card networks to receive early chargeback signals before they're officially filed. We automatically refund such transactions under a certain value and cancel any subscriptions associated with the customer to reduce chargebacks proactively.
-  </Note>
+### Policy Violations
 
-#### Policy Violations
+When an account violates our [Acceptable Use Policy](/merchant-of-record/acceptable-use) — separately from chargeback issues — we offboard the merchant. Payment processing is blocked and payouts are paused pending review.
 
-For merchants who violate our [acceptable use policies](/merchant-of-record/acceptable-use) (and don't have high chargeback rates):
+If we suspect fraud or intentional abuse, we block the account immediately. Otherwise, we reach out and give you 48 hours to respond; failure to respond may result in refunds to affected customers. We may also run test transactions ourselves to verify account status.
 
-- **Immediate Action**: We will offboard merchants who violate our policies
-- **Payment Processing**: All payment processing will be blocked
-- **Payout Management**: Payouts will be paused pending review
-- **Resolution Process**:
-  - We may conduct test transactions to verify account status
-  - In case of strong suspicion of fraud or intentional abuse, we block the account immediately
-  - We reach out merchants about the issue and give them 48 hours to respond
-    - Failure to respond may result in refunds to affected customers
-  - We pause future payments in the meantime if deemed necessary
-  - We pause payouts during the resolution process
-  - We strive to collaborate with merchants on the best possible path forward. Clear fraud or abuse, however, is immediately blocked.
-  - We have to cancel subscriptions and refund payments made in violation of our acceptable use policies for compliance and risk, and strive to do so in collaboration with the merchant.
+We aim to work with you on the best path forward, but for compliance and risk reasons we have to cancel subscriptions and refund payments made in violation of the policy.
 
-## Frequently Asked Questions
+## FAQ
 
-### Why is my account under review again?
+<AccordionGroup>
+  <Accordion title="Why is my account under review again?">
+    Your account may go through multiple reviews as your business grows. We perform [continuous reviews](#continuous-reviews) at certain sales thresholds to maintain platform integrity and prevent fraud. This is a standard practice across payment platforms and is part of our ongoing risk management process.
+  </Accordion>
+  <Accordion title="Why do you need my social media in settings?">
+    We request social media information as part of our identity verification and fraud prevention processes. This helps us:
 
-Your account may go through multiple reviews as your business grows. We perform [continuous reviews](#continuous-reviews-async) at certain sales thresholds to maintain platform integrity and prevent fraud. This is a standard practice across payment platforms and is part of our ongoing risk management process.
+    * Verify that you're a real business or creator with an online presence
+    * Understand your products and services better
+    * Ensure compliance with our [acceptable use policies](/merchant-of-record/acceptable-use)
 
-### Why do you need my social media in settings?
+    Providing accurate social media information helps speed up the review process and demonstrates the legitimacy of your business.
+  </Accordion>
+  <Accordion title="Are social media settings visible publicly?">
+    No, your social media settings are not publicly visible. This information is used internally for verification and compliance purposes only. We treat all merchant information with strict confidentiality and use it solely for risk assessment and account review processes.
+  </Accordion>
+  <Accordion title="Why do I need to share a video recording showing the product working?">
+    To help us verify that everything is working correctly in line with our acceptable use policy, our team would ask you to share a 100% discount code by email. This is our preferred method, as it allows the team to go through the full journey themselves and confirm the automated fulfillment from an unpaid user to a paid user.
 
-We request social media information as part of our identity verification and fraud prevention processes. This helps us:
+    Alternatively, you can provide a video recording that clearly shows the complete flow from an unpaid user to a paid user, including how the product is automatically accessible after purchase.
+  </Accordion>
+  <Accordion title="How do I transfer my organization to a new admin?">
+    To transfer admin ownership of an organization:
 
-* Verify that you're a real business or creator with an online presence
-* Understand your products and services better
-* Ensure compliance with our [acceptable use policies](/merchant-of-record/acceptable-use)
+    1. Invite the new admin to the team via `Settings` > `Members` in the Polar dashboard
+    2. Ask that new admin to complete identity verification under `Finance` > `Account` after logging in via that email in the Polar dashboard
+    3. Make sure no payout is pending
+    4. Send an email from the current admin email to our support confirming the transfer to the new admin
 
-Providing accurate social media information helps speed up the review process and demonstrates the legitimacy of your business.
-
-### Are social media settings visible publicly?
-
-No, your social media settings are not publicly visible. This information is used internally for verification and compliance purposes only. We treat all merchant information with strict confidentiality and use it solely for risk assessment and account review processes.
-
-### Why do I need to share a video recording showing the product working?
-
-To help us verify that everything is working correctly in line with our acceptable use policy, our team would ask you to share a 100% discount code by email. This is our preferred method, as it allows the team to go through the full journey themselves and confirm the automated fulfillment from an unpaid user to a paid user.
-
-Alternatively, you can provide a video recording that clearly shows the complete flow from an unpaid user to a paid user, including how the product is automatically accessible after purchase.
-
-### How does changing the admin of an organization work?
-
-To change the admin of an organization:
-
-1. Invite the new admin to the team via `Settings` > `Members` in the Polar dashboard
-2. Ask that new admin to complete identity verification under `Finance` > `Account` after logging in via that email in the Polar dashboard
-3. Make sure no payout is pending
-4. Send an email from the current admin email to our support confirming the transfer to the new admin
-
-If you need assistance with changing organization ownership or have special circumstances, please contact [support@polar.sh](mailto:support@polar.sh).
+    If you need assistance with changing organization ownership or have special circumstances, please contact [support@polar.sh](mailto:support@polar.sh).
+  </Accordion>
+</AccordionGroup>
