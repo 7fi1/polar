@@ -44,6 +44,7 @@ export const ConfirmModal = ({
   const { control, handleSubmit, reset, watch } = form
   // eslint-disable-next-line react-hooks/incompatible-library
   const prompt = watch('prompt')
+  const trimmedConfirmPrompt = confirmPrompt?.trim()
 
   const handleConfirm = useCallback(() => {
     onConfirm()
@@ -90,14 +91,14 @@ export const ConfirmModal = ({
               {confirmPrompt && (
                 <>
                   <p className="dark:text-polar-400 max-w-full text-sm text-gray-500">
-                    Please enter &quot;{confirmPrompt}&quot; to confirm:
+                    Please enter &quot;{trimmedConfirmPrompt}&quot; to confirm:
                   </p>
                   <FormField
                     control={control}
                     name="prompt"
                     rules={{
                       validate: (value) =>
-                        value === confirmPrompt ||
+                        (value ?? '').trim() === trimmedConfirmPrompt ||
                         'Please enter the exact text to confirm',
                     }}
                     render={({ field }) => {
@@ -108,7 +109,7 @@ export const ConfirmModal = ({
                               <Input
                                 type="input"
                                 required
-                                placeholder={confirmPrompt}
+                                placeholder={trimmedConfirmPrompt}
                                 autoComplete="off"
                                 {...field}
                               />
@@ -125,7 +126,11 @@ export const ConfirmModal = ({
                 <Button
                   type="submit"
                   variant={destructive ? 'destructive' : 'default'}
-                  disabled={confirmPrompt ? prompt !== confirmPrompt : false}
+                  disabled={
+                    trimmedConfirmPrompt
+                      ? (prompt ?? '').trim() !== trimmedConfirmPrompt
+                      : false
+                  }
                 >
                   {destructive ? destructiveText : 'Confirm'}
                 </Button>
