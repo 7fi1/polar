@@ -66,6 +66,17 @@ workflows, which toggle a GitHub ruleset. The `/emergency` PR command still
 works because its identity is on the ruleset's bypass list.
 
 
+## Docker dev environment
+
+One shared infra stack (postgres, redis, minio, tinybird) plus one app stack (api, worker, web) per worktree, each on its own DB / Redis index / buckets. Service-aware commands auto-route by service name (`api`/`worker`/`web` → this instance, `db`/`redis`/`minio`/`tinybird` → shared). `dev docker --help` for the full list.
+
+```bash
+dev docker up                           # shared infra (if needed) + this instance's app stack
+dev docker logs api                     # follow logs (auto-routes to the right project)
+dev docker exec db psql -U polar -l     # one-off command in any container
+dev docker down                         # stop this instance (--all to also stop shared)
+```
+
 ## Adding New Steps
 
 The `dev up` command runs steps from `up_steps/` in alphabetical order. Each step file needs:
