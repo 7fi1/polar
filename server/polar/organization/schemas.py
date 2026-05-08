@@ -82,6 +82,16 @@ SlugInput = Annotated[
 ]
 
 
+class OrganizationSlugCheck(Schema):
+    slug: str = Field(description="The slug to check availability for.")
+
+
+class OrganizationSlugAvailability(Schema):
+    available: bool = Field(
+        description="Whether the slug is available for a new organization."
+    )
+
+
 def _discard_logo_dev_url(url: HttpUrl) -> HttpUrl | None:
     if url.host and url.host.endswith("logo.dev"):
         return None

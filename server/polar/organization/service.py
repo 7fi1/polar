@@ -9,6 +9,7 @@ import email_validator
 import structlog
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
+from slugify import slugify
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
@@ -82,7 +83,10 @@ from .schemas import (
     OrganizationReviewState,
     OrganizationReviewSubmissionBody,
     OrganizationReviewVerdict,
+    OrganizationSlugAvailability,
     OrganizationUpdate,
+    validate_blocked_words,
+    validate_reserved_keywords,
 )
 from .sorting import OrganizationSortProperty
 
@@ -214,6 +218,31 @@ class OrganizationService:
         )
 
         return await repository.get_one_or_none(statement)
+
+    async def check_slug_availability(
+        self, session: AsyncReadSession, slug: str
+    ) -> OrganizationSlugAvailability:
+        """Check whether a slug is valid and available for a new organization.
+
+        Mirrors the validation rules of the `SlugInput` type plus a
+        check against existing (and soft-deleted) organizations.
+        """
+        normalized = slug.lower()
+
+        if len(normalized) < 3 or slugify(normalized) != normalized:
+            return OrganizationSlugAvailability(available=False)
+
+        try:
+            validate_reserved_keywords(normalized)
+            validate_blocked_words(normalized)
+        except ValueError:
+            return OrganizationSlugAvailability(available=False)
+
+        repository = OrganizationRepository.from_session(session)
+        if await repository.slug_exists(normalized):
+            return OrganizationSlugAvailability(available=False)
+
+        return OrganizationSlugAvailability(available=True)
 
     async def create(
         self,
