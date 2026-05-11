@@ -240,3 +240,28 @@ class TestCreateReversalBalance:
         assert incoming.amount == 1000
 
         assert outgoing.balance_correlation_key == incoming.balance_correlation_key
+
+    async def test_enqueues_organization_check_threshold(
+        self,
+        mocker: MockerFixture,
+        session: AsyncSession,
+        save_fixture: SaveFixture,
+        user: User,
+        account: Account,
+    ) -> None:
+        enqueue_job_mock = mocker.patch("polar.transaction.service.balance.enqueue_job")
+
+        balance_transactions = await create_balance_transactions(
+            save_fixture, destination_account=account, amount=1000
+        )
+        balance_transactions = await load_balance_transactions(
+            session, balance_transactions
+        )
+
+        await balance_transaction_service.create_reversal_balance(
+            session, balance_transactions=balance_transactions, amount=400
+        )
+
+        enqueue_job_mock.assert_called_once_with(
+            "organization.check_threshold", account_id=account.id
+        )
