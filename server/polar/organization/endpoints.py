@@ -9,6 +9,7 @@ from polar.account.service import account as account_service
 from polar.authz.dependencies import (
     AuthorizeFinanceRead,
     AuthorizeMembersManage,
+    AuthorizeMembersSetRole,
     AuthorizeOrgAccess,
     AuthorizeOrgAccessUser,
     AuthorizeOrgAccessWrite,
@@ -37,10 +38,10 @@ from polar.integrations.polar.service import (
 from polar.integrations.polar.service import polar_self as polar_self_service
 from polar.kit.http import check_url_reachable
 from polar.kit.pagination import ListResource, Pagination, PaginationParamsQuery
-from polar.models import Account, Organization
+from polar.models import Account, Organization, UserOrganization
+from polar.models.user_organization import OrganizationRole
 from polar.openapi import APITag
 from polar.organization.repository import (
-    OrganizationRepository,
     OrganizationReviewRepository,
 )
 from polar.payout_account.repository import PayoutAccountRepository
@@ -52,9 +53,15 @@ from polar.postgres import (
 )
 from polar.routing import APIRouter
 from polar.user.service import user as user_service
-from polar.user_organization.schemas import OrganizationMember, OrganizationMemberInvite
+from polar.user_organization.schemas import (
+    OrganizationMember,
+    OrganizationMemberInvite,
+    OrganizationMemberRoleUpdate,
+)
 from polar.user_organization.service import (
-    CannotRemoveOrganizationAdmin,
+    CannotRemoveOrganizationOwner,
+    InvalidOwnerRoleAssignment,
+    OwnerRoleCannotBeRemoved,
     UserNotMemberOfOrganization,
 )
 from polar.user_organization.service import (
@@ -374,21 +381,8 @@ async def members(
     organization = authz.organization
     members = await user_organization_service.list_by_org(session, organization.id)
 
-    # Get admin user to set is_admin flag
-    org_repo = OrganizationRepository.from_session(session)
-    admin_user = await org_repo.get_admin_user(organization)
-    admin_user_id = admin_user.id if admin_user else None
-
-    # Build response with is_admin flag
-    member_items = []
-    for m in members:
-        member_data = OrganizationMember.model_validate(m)
-        if admin_user_id and m.user_id == admin_user_id:
-            member_data.is_admin = True
-        member_items.append(member_data)
-
     return ListResource(
-        items=member_items,
+        items=[OrganizationMember.model_validate(m) for m in members],
         pagination=Pagination(total_count=len(members), max_page=1),
     )
 
@@ -471,17 +465,21 @@ async def leave_organization(
 ) -> None:
     """Leave an organization.
 
-    Users can only leave an organization if they are not the admin
-    and there is at least one other member.
+    The organization owner cannot leave; ownership must be transferred first.
     """
     organization = authz.organization
     user = authz.auth_subject.subject
 
-    org_repo = OrganizationRepository.from_session(session)
-    admin_user = await org_repo.get_admin_user(organization)
+    user_org = await user_organization_service.get_by_user_and_org(
+        session, user.id, organization.id
+    )
+    if user_org is None:
+        raise ResourceNotFound()
 
-    if admin_user and admin_user.id == user.id:
-        raise NotPermitted("Organization admins cannot leave the organization.")
+    if user_org.role == OrganizationRole.owner:
+        raise NotPermitted(
+            "The organization owner cannot leave; transfer ownership first."
+        )
 
     # Check if user is the only member
     member_count = await user_organization_service.get_member_count(
@@ -490,7 +488,6 @@ async def leave_organization(
     if member_count <= 1:
         raise NotPermitted("Cannot leave organization as the only member.")
 
-    # Remove the user from the organization
     await user_organization_service.remove_member(
         session,
         user_id=user.id,
@@ -534,8 +531,55 @@ async def remove_member(
         )
     except UserNotMemberOfOrganization:
         raise ResourceNotFound()
-    except CannotRemoveOrganizationAdmin:
-        raise NotPermitted("Cannot remove the organization admin.")
+    except CannotRemoveOrganizationOwner:
+        raise NotPermitted("Cannot remove the organization owner.")
+
+
+@router.patch(
+    "/{id}/members/{user_id}",
+    response_model=OrganizationMember,
+    summary="Set Member Role",
+    tags=[APITag.private],
+    responses={
+        200: {"description": "Role updated."},
+        403: {
+            "description": "Not authorized to change member roles, or the role "
+            "transition is not allowed.",
+            "model": NotPermitted.schema(),
+        },
+        404: OrganizationNotFound,
+    },
+)
+async def set_member_role(
+    authz: AuthorizeMembersSetRole,
+    user_id: UUID,
+    body: OrganizationMemberRoleUpdate,
+    session: AsyncSession = Depends(get_db_session),
+) -> UserOrganization:
+    """Change a member's role on an organization.
+
+    Only `admin` and `member` are accepted; ownership transfers go through
+    a separate flow (`Account.admin_id` mutation, today the backoffice
+    `change_admin` endpoint).
+    """
+    try:
+        return await user_organization_service.set_role(
+            session,
+            user_id=user_id,
+            organization_id=authz.organization.id,
+            role=body.role,
+        )
+    except UserNotMemberOfOrganization:
+        raise ResourceNotFound()
+    except OwnerRoleCannotBeRemoved:
+        raise NotPermitted(
+            "The organization owner cannot be moved to another role; "
+            "transfer ownership first."
+        )
+    except InvalidOwnerRoleAssignment:
+        # Should be unreachable given the schema rejects `owner`, but kept
+        # as defence-in-depth in case the schema constraint is ever relaxed.
+        raise NotPermitted("Cannot assign the owner role via this endpoint.")
 
 
 @router.post(

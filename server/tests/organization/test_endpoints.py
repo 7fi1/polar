@@ -9,7 +9,7 @@ from polar.models import Product, User
 from polar.models.account import Account
 from polar.models.organization import Organization, OrganizationStatus
 from polar.models.subscription import SubscriptionStatus
-from polar.models.user_organization import UserOrganization
+from polar.models.user_organization import OrganizationRole, UserOrganization
 from polar.payout_account.service import PayoutAccountServiceError
 from polar.postgres import AsyncSession
 from polar.user_organization.service import (
@@ -546,6 +546,122 @@ class TestInviteOrganization:
 
 
 @pytest.mark.asyncio
+class TestSetMemberRole:
+    @pytest.mark.auth
+    @pytest.mark.keep_session_state
+    async def test_promote_member_to_admin(
+        self,
+        client: AsyncClient,
+        organization: Organization,
+        user_second: User,
+        user_organization: UserOrganization,
+        user_organization_second: UserOrganization,
+    ) -> None:
+        response = await client.patch(
+            f"/v1/organizations/{organization.id}/members/{user_second.id}",
+            json={"role": "admin"},
+        )
+
+        assert response.status_code == 200
+        json = response.json()
+        assert json["user_id"] == str(user_second.id)
+        assert json["role"] == "admin"
+        assert json["is_admin"] is True
+
+    @pytest.mark.auth
+    @pytest.mark.keep_session_state
+    async def test_demote_admin_to_member(
+        self,
+        client: AsyncClient,
+        save_fixture: SaveFixture,
+        organization: Organization,
+        user_second: User,
+        user_organization: UserOrganization,
+        user_organization_second: UserOrganization,
+    ) -> None:
+        user_organization_second.role = OrganizationRole.admin
+        await save_fixture(user_organization_second)
+
+        response = await client.patch(
+            f"/v1/organizations/{organization.id}/members/{user_second.id}",
+            json={"role": "member"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["role"] == "member"
+        assert response.json()["is_admin"] is False
+
+    @pytest.mark.auth
+    async def test_owner_role_in_body_rejected(
+        self,
+        client: AsyncClient,
+        organization: Organization,
+        user_second: User,
+        user_organization: UserOrganization,
+        user_organization_second: UserOrganization,
+    ) -> None:
+        response = await client.patch(
+            f"/v1/organizations/{organization.id}/members/{user_second.id}",
+            json={"role": "owner"},
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.auth
+    async def test_cannot_demote_owner(
+        self,
+        client: AsyncClient,
+        organization: Organization,
+        user: User,
+        user_organization: UserOrganization,
+    ) -> None:
+        # `user_organization` defaults to role=owner; the endpoint must
+        # refuse moving the owner to admin/member.
+        response = await client.patch(
+            f"/v1/organizations/{organization.id}/members/{user.id}",
+            json={"role": "admin"},
+        )
+
+        assert response.status_code == 403
+        assert "owner" in response.json()["detail"].lower()
+
+    @pytest.mark.auth
+    async def test_target_user_not_member_returns_404(
+        self,
+        client: AsyncClient,
+        organization: Organization,
+        user_organization: UserOrganization,
+    ) -> None:
+        response = await client.patch(
+            f"/v1/organizations/{organization.id}/members/{uuid.uuid4()}",
+            json={"role": "admin"},
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.auth
+    async def test_caller_not_admin_returns_403(
+        self,
+        client: AsyncClient,
+        save_fixture: SaveFixture,
+        organization: Organization,
+        user_second: User,
+        user_organization: UserOrganization,
+        user_organization_second: UserOrganization,
+    ) -> None:
+        # Caller is a regular member, not an admin/owner.
+        user_organization.role = OrganizationRole.member
+        await save_fixture(user_organization)
+
+        response = await client.patch(
+            f"/v1/organizations/{organization.id}/members/{user_second.id}",
+            json={"role": "admin"},
+        )
+
+        assert response.status_code == 403
+
+
+@pytest.mark.asyncio
 @pytest.mark.auth
 async def test_list_members(
     session: AsyncSession,
@@ -644,9 +760,8 @@ class TestSetPayoutAccount:
         user: User,
     ) -> None:
         """A regular org member (not admin) cannot set the payout account."""
-        other_user = await create_user(save_fixture)
-        organization.account = await create_account(save_fixture, user=other_user)
-        await save_fixture(organization)
+        user_organization.role = OrganizationRole.member
+        await save_fixture(user_organization)
 
         payout_account = await create_payout_account(save_fixture, organization, user)
         organization.payout_account = None
@@ -916,20 +1031,17 @@ class TestDeleteOrganization:
         user: User,
         mocker: MockerFixture,
     ) -> None:
-        # Create an account with a different admin (not the current user)
-        other_user = User(
-            email="other@example.com",
-        )
-        await save_fixture(other_user)
-
-        organization.account = await create_account(save_fixture, user=other_user)
-        await save_fixture(organization)
+        # User is a regular member, not an admin.
+        user_organization.role = OrganizationRole.member
+        await save_fixture(user_organization)
 
         response = await client.delete(f"/v1/organizations/{organization.id}")
 
         assert response.status_code == 403
         json = response.json()
-        assert json["detail"] == "Only the account admin can delete the organization"
+        assert (
+            json["detail"] == "Only an organization admin can delete the organization"
+        )
 
 
 @pytest.mark.asyncio
