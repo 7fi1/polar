@@ -23814,6 +23814,11 @@ export interface components {
        * @default false
        */
       highlight: boolean
+      /**
+       * Custom
+       * @default false
+       */
+      custom: boolean
       /** Features */
       features?: string[]
     }
