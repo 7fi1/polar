@@ -8,7 +8,6 @@ import { Text } from '@polar-sh/orbit'
 import { Box } from '@polar-sh/orbit/Box'
 import Button from '@polar-sh/ui/components/atoms/Button'
 
-import { ISODuration } from '@/utils/duration'
 import React, { useCallback } from 'react'
 import { useModal } from '../Modal/useModal'
 import { Well, WellContent, WellFooter, WellHeader } from '../Shared/Well'
@@ -74,25 +73,16 @@ const AccountBalance: React.FC<AccountBalanceProps> = ({
     showCreatePayoutAccountModal()
   }, [hideManagePayoutAccountModal, showCreatePayoutAccountModal])
 
-  const delay = new ISODuration(account.payout_transaction_delay)
-  const hasDelay = delay.isNonZero()
-  const delayLabel = delay.format()
   const availableBalance = summary
     ? formatCurrency('accounting')(
         summary.available_balance.amount,
         summary.available_balance.currency,
       )
     : null
-  const totalBalance = summary
-    ? formatCurrency('accounting')(
-        summary.balance.amount,
-        summary.balance.currency,
-      )
-    : null
 
   return (
     <Box display="flex" flexDirection={{ base: 'column', md: 'row' }} gap="2xl">
-      <Well className="flex-1 justify-between rounded-2xl bg-gray-50 p-6">
+      <Well className="flex-1 justify-start rounded-2xl bg-gray-50 p-6">
         <WellHeader className="flex flex-row items-center justify-between gap-x-6">
           <Text variant="heading-xxs" as="h2">
             Available balance
@@ -105,27 +95,21 @@ const AccountBalance: React.FC<AccountBalanceProps> = ({
           <Text variant="heading-s" loading={isLoading}>
             {availableBalance}
           </Text>
-          {summary &&
-          summary.available_balance.amount !== summary.balance.amount ? (
-            <Box display="flex" flexDirection="column" rowGap="xs">
-              <Text color="muted">Total balance: {totalBalance}</Text>
-              {hasDelay && (
-                <Text color="muted">
-                  Available in {delayLabel}:{' '}
-                  {formatCurrency('accounting')(
-                    summary.balance.amount - summary.available_balance.amount,
-                    summary.balance.currency,
-                  )}
-                </Text>
-              )}
-            </Box>
-          ) : null}
         </WellContent>
         <WellFooter>
-          <Text color="muted">Minimum withdrawal amounts apply.</Text>
+          {summary &&
+          summary.available_balance.amount !== summary.balance.amount ? (
+            <Text color="muted">
+              Held balance:{' '}
+              {formatCurrency('accounting')(
+                summary.balance.amount - summary.available_balance.amount,
+                summary.balance.currency,
+              )}
+            </Text>
+          ) : null}
         </WellFooter>
       </Well>
-      <Well className="flex-1 justify-between rounded-2xl bg-gray-50 p-6">
+      <Well className="flex-1 justify-start rounded-2xl bg-gray-50 p-6">
         <WellHeader className="flex flex-row items-center justify-between gap-x-6">
           <Text variant="heading-xxs" as="h2">
             Fee Credits
@@ -144,13 +128,13 @@ const AccountBalance: React.FC<AccountBalanceProps> = ({
               formatCurrency('accounting')(account.credit_balance, 'usd')}
           </Text>
         </WellContent>
-        <WellFooter>
+        <WellFooter className="mt-auto">
           <Text color="muted">
             Fees are first deducted from available credits.
           </Text>
         </WellFooter>
       </Well>
-      <Well className="flex-1 justify-between rounded-2xl bg-gray-50 p-6">
+      <Well className="flex-1 justify-start rounded-2xl bg-gray-50 p-6">
         <WellHeader className="flex flex-row items-center justify-between gap-x-6">
           <Text variant="heading-xxs" as="h2">
             Payout Account
@@ -184,7 +168,7 @@ const AccountBalance: React.FC<AccountBalanceProps> = ({
               : '—'}
           </Text>
         </WellContent>
-        <WellFooter>
+        <WellFooter className="mt-auto">
           {payoutAccount ? (
             <Box display="flex" alignItems="center" columnGap="m">
               <Text color="muted">
