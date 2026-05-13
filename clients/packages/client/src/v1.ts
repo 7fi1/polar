@@ -6729,6 +6729,8 @@ export interface components {
       tax_country?: string | null
       /** Fee */
       fee: number
+      /** Exchange Rate */
+      exchange_rate?: number
     }
     /**
      * BalanceDisputeEvent
