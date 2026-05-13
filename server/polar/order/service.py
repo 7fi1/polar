@@ -754,7 +754,7 @@ class OrderService:
             )
             total_amount = net_amount + tax_amount
             customer_balance = await wallet_service.get_billing_wallet_balance(
-                session, customer, subscription.currency
+                session, customer, subscription.currency, for_update=True
             )
 
             # Calculate balance change and applied amount
@@ -1942,6 +1942,20 @@ class OrderService:
             order,
             update_dict={"status": OrderStatus.void, "next_payment_attempt_at": None},
         )
+
+        # Reduce positive customer balance
+        customer_balance = await wallet_service.get_billing_wallet_balance(
+            session, order.customer, order.currency, for_update=True
+        )
+        if customer_balance > 0:
+            reduction_amount = min(customer_balance, order.due_amount)
+            await wallet_service.create_balance_transaction(
+                session,
+                order.customer,
+                -reduction_amount,
+                order.currency,
+                order=order,
+            )
 
         await event_service.create_event(
             session,
