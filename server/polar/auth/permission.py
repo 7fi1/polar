@@ -60,10 +60,6 @@ class OrganizationPermission(StrEnum):
 _ADMIN_ONLY: set[OrganizationPermission] = {
     OrganizationPermission.organization_manage,
     OrganizationPermission.members_manage,
-    OrganizationPermission.products_manage,
-    OrganizationPermission.custom_fields_manage,
-    OrganizationPermission.customers_manage,
-    OrganizationPermission.analytics_manage,
     OrganizationPermission.finance_read,
     OrganizationPermission.finance_manage,
 }
@@ -71,10 +67,14 @@ _ADMIN_ONLY: set[OrganizationPermission] = {
 _MEMBER_PERMISSIONS: set[OrganizationPermission] = {
     OrganizationPermission.members_read,
     OrganizationPermission.products_read,
+    OrganizationPermission.products_manage,
     OrganizationPermission.custom_fields_read,
+    OrganizationPermission.custom_fields_manage,
     OrganizationPermission.customers_read,
+    OrganizationPermission.customers_manage,
     OrganizationPermission.sales_read,
     OrganizationPermission.analytics_read,
+    OrganizationPermission.analytics_manage,
     OrganizationPermission.events_ingest,
 }
 
