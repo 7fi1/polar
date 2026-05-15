@@ -15576,6 +15576,62 @@ export interface components {
         [key: string]: unknown
       } | null
     }
+    /** CustomerSeatAssign */
+    CustomerSeatAssign: {
+      /**
+       * Subscription Id
+       * @description Subscription ID. Required if neither order_id nor checkout_id is provided.
+       */
+      subscription_id?: string | null
+      /**
+       * Order Id
+       * @description Order ID for one-time purchases. Required if subscription_id is not provided.
+       */
+      order_id?: string | null
+      /**
+       * Email
+       * @description Email of the customer to assign the seat to
+       */
+      email?: string | null
+      /**
+       * External Customer Id
+       * @description External customer ID for the seat assignment
+       */
+      external_customer_id?: string | null
+      /**
+       * Customer Id
+       * @description Customer ID for the seat assignment
+       */
+      customer_id?: string | null
+      /**
+       * External Member Id
+       * @description External member ID for the seat assignment. Can be used alone (lookup existing member) or with email (create/validate member).
+       */
+      external_member_id?: string | null
+      /**
+       * Member Id
+       * @description Member ID for the seat assignment.
+       */
+      member_id?: string | null
+      /**
+       * Metadata
+       * @description Additional metadata for the seat (max 10 keys, 1KB total)
+       */
+      metadata?: {
+        [key: string]: unknown
+      } | null
+      /**
+       * Immediate Claim
+       * @description If true, the seat will be immediately claimed without sending an invitation email. API-only feature.
+       * @default false
+       */
+      immediate_claim: boolean
+      /**
+       * Checkout Id
+       * @description Checkout ID. Resolves to the subscription or order produced by the checkout.
+       */
+      checkout_id?: string | null
+    }
     /**
      * CustomerSeatClaimResponse
      * @description Response after successfully claiming a seat.
@@ -27011,22 +27067,12 @@ export interface components {
     SeatAssign: {
       /**
        * Subscription Id
-       * @description Subscription ID. Required if checkout_id and order_id are not provided.
+       * @description Subscription ID. Required if neither order_id nor checkout_id is provided.
        */
       subscription_id?: string | null
       /**
-       * Checkout Id
-       * @description Checkout ID. Used to look up subscription or order from the checkout page.
-       */
-      checkout_id?: string | null
-      /**
-       * Checkout Client Secret
-       * @description Client secret of the checkout. Required when assigning seats via checkout_id as an anonymous caller (e.g. the checkout confirmation page).
-       */
-      checkout_client_secret?: string | null
-      /**
        * Order Id
-       * @description Order ID for one-time purchases. Required if subscription_id and checkout_id are not provided.
+       * @description Order ID for one-time purchases. Required if subscription_id is not provided.
        */
       order_id?: string | null
       /**
@@ -40192,7 +40238,7 @@ export interface operations {
     }
     requestBody: {
       content: {
-        'application/json': components['schemas']['SeatAssign']
+        'application/json': components['schemas']['CustomerSeatAssign']
       }
     }
     responses: {
@@ -41928,7 +41974,7 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Authentication required for direct subscription or order assignment */
+      /** @description Authentication required */
       401: {
         headers: {
           [name: string]: unknown
@@ -41942,7 +41988,7 @@ export interface operations {
         }
         content?: never
       }
-      /** @description Subscription, order, checkout, or customer not found */
+      /** @description Subscription, order, or customer not found */
       404: {
         headers: {
           [name: string]: unknown

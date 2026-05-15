@@ -1,49 +1,48 @@
-import { getServerURL } from '@/utils/api'
-import { api } from '@/utils/client'
+import { api, createClientSideAPI } from '@/utils/client'
 import { schemas, unwrap } from '@polar-sh/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import { defaultRetry } from './retry'
 
+type SeatAssignVariables = Omit<
+  schemas['SeatAssign'],
+  'subscription_id' | 'order_id' | 'checkout_id' | 'immediate_claim'
+>
+
+/**
+ * Post-checkout seat assignment via the customer portal endpoint. Sends the
+ * checkout_id; the backend resolves the subscription or order produced by
+ * the checkout (scoped to the authenticated customer).
+ */
 export const useAssignSeatFromCheckout = (
   checkoutId: string,
-  checkoutClientSecret: string,
+  customerSessionToken: string,
 ) => {
   const queryClient = useQueryClient()
+  const portalApi = useMemo(
+    () => createClientSideAPI(customerSessionToken),
+    [customerSessionToken],
+  )
 
   return useMutation({
-    mutationFn: async (
-      variables: Omit<
-        schemas['SeatAssign'],
-        'checkout_id' | 'checkout_client_secret' | 'immediate_claim'
-      > & {
-        immediate_claim?: boolean
-      },
-    ) => {
-      const response = await fetch(`${getServerURL()}/v1/customer-seats`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+    mutationFn: async (variables: SeatAssignVariables) => {
+      const result = await portalApi.POST('/v1/customer-portal/seats', {
+        body: {
           ...variables,
           checkout_id: checkoutId,
-          checkout_client_secret: checkoutClientSecret,
-          immediate_claim: variables.immediate_claim ?? false,
-        }),
+          immediate_claim: false,
+        },
       })
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}))
-        throw new Error(error.detail || 'Failed to assign seat')
+      if (result.error) {
+        const detail = (result.error as { detail?: unknown }).detail
+        throw new Error(
+          typeof detail === 'string' ? detail : 'Failed to assign seat',
+        )
       }
-
-      return response.json()
+      return result.data
     },
     onSuccess: () => {
-      // Invalidate relevant queries if needed
-      queryClient.invalidateQueries({
-        queryKey: ['checkouts', checkoutId],
-      })
+      queryClient.invalidateQueries({ queryKey: ['customer_seats'] })
     },
   })
 }
